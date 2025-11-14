@@ -1,6 +1,8 @@
 // lib/pages/forecast_page.dart
+import 'package:clear_view/state/app_state.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../services/weather_service.dart';
 import '../models/weather_models.dart';
@@ -12,20 +14,13 @@ class ForecastPage extends StatefulWidget {
   _ForecastPageState createState() => _ForecastPageState();
 }
 
-class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClientMixin {
+class _ForecastPageState extends State<ForecastPage>
+    with AutomaticKeepAliveClientMixin {
   final WeatherService _weatherService = WeatherService();
-  Future<Weather>? _weatherFuture;
-  String? _currentCity; // Can be current location or searched city
   final TextEditingController _citySearchController = TextEditingController();
 
   @override
   bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchWeatherDataForCurrentLocation(); // Initial fetch for current location
-  }
 
   @override
   void dispose() {
@@ -35,32 +30,16 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
 
   // Fetches weather for the device's current location
   Future<void> _fetchWeatherDataForCurrentLocation() async {
-    setState(() {
-      _currentCity = "Fetching location..."; // Indicate loading state
-      _weatherFuture = null; // Clear previous future
-    });
+    Provider.of<AppState>(context, listen: false)
+        .setSearchedCity("Fetching location...");
     try {
       String city = await _weatherService.getCurrentCity();
-      setState(() {
-        _currentCity = city;
-        _weatherFuture = _weatherService.getWeather(city);
-      });
+      Provider.of<AppState>(context, listen: false).setSearchedCity(city);
     } catch (e) {
       print("Error fetching current city for forecast: $e");
-      setState(() {
-        _currentCity = "Location Error"; // Indicate error
-        _weatherFuture = Future.error("Could not get current location. Please allow location access or search manually: $e");
-      });
+      Provider.of<AppState>(context, listen: false)
+          .setSearchedCity("Location Error");
     }
-  }
-
-  // Fetches weather for a specified city
-  Future<void> _fetchWeatherDataForCity(String cityName) async {
-    if (cityName.isEmpty) return;
-    setState(() {
-      _currentCity = cityName; // Update current city to the searched one
-      _weatherFuture = _weatherService.getWeather(cityName);
-    });
   }
 
   // Helper to get image path based on weather condition
@@ -82,13 +61,20 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
             decoration: InputDecoration(
               hintText: "Enter city name",
               hintStyle: TextStyle(color: Colors.white54),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.lightBlueAccent[100]!)),
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
+              focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.lightBlueAccent[100]!)),
+              enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white30)),
             ),
             style: TextStyle(color: Colors.white),
             onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                // Update the *global* AppState
+                Provider.of<AppState>(context, listen: false)
+                    .setSearchedCity(value);
+              }
               Navigator.pop(dialogContext); // Close dialog
-              _fetchWeatherDataForCity(value); // Fetch weather for the entered city
+              _citySearchController.clear();
             },
           ),
           actions: [
@@ -98,10 +84,16 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
             ),
             TextButton(
               onPressed: () {
+                if (_citySearchController.text.isNotEmpty) {
+                  // Update the *global* AppState
+                  Provider.of<AppState>(context, listen: false)
+                      .setSearchedCity(_citySearchController.text);
+                }
                 Navigator.pop(dialogContext); // Close dialog
-                _fetchWeatherDataForCity(_citySearchController.text); // Fetch weather
+                _citySearchController.clear();
               },
-              child: Text("Search", style: TextStyle(color: Colors.lightBlueAccent[100])),
+              child: Text("Search",
+                  style: TextStyle(color: Colors.lightBlueAccent[100])),
             ),
           ],
         );
@@ -112,6 +104,10 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    // Get the AppState.
+    final appState = Provider.of<AppState>(context);
+    final String currentCity = appState.searchedCityQuery;
 
     return Scaffold(
       appBar: AppBar(
@@ -127,43 +123,42 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
             icon: Icon(Icons.search, color: Colors.white),
             onPressed: _showCitySearchDialog,
           ),
-          IconButton( // Button to re-fetch current location
+          IconButton(
+            // Button to re-fetch current location
             icon: Icon(Icons.my_location, color: Colors.white),
             onPressed: _fetchWeatherDataForCurrentLocation,
           ),
         ],
       ),
       body: FutureBuilder<Weather>(
-        future: _weatherFuture,
+        future: _weatherService.getWeather(currentCity),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting || _currentCity == "Fetching location...") {
+          if (currentCity == "Fetching location..." ||
+              snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
 
-          if (snapshot.hasError) {
+          if (snapshot.hasError || currentCity == "Location Error") {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline, color: Colors.red[300], size: 40),
+                    Icon(Icons.error_outline,
+                        color: Colors.red[300], size: 40),
                     SizedBox(height: 10),
                     Text(
-                      "Error: ${snapshot.error}",
+                      "Error: ${snapshot.error ?? 'Could not find location.'}",
                       style: TextStyle(color: Colors.red[300]),
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () {
-                        if (_currentCity != null && _currentCity != "Location Error") {
-                          _fetchWeatherDataForCity(_currentCity!); // Retry for last searched city
-                        } else {
-                          _fetchWeatherDataForCurrentLocation(); // Retry for current location
-                        }
+                        _fetchWeatherDataForCurrentLocation();
                       },
-                      child: Text("Retry"),
+                      child: Text("Retry Location"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.lightBlueAccent[100],
                         foregroundColor: Colors.black,
@@ -176,7 +171,9 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
           }
 
           if (!snapshot.hasData || snapshot.data == null) {
-            return Center(child: Text("No forecast data available for this location."));
+            return Center(
+                child:
+                Text("No forecast data available for this location."));
           }
 
           final Weather weatherData = snapshot.data!;
@@ -186,7 +183,7 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
-                  _currentCity!,
+                  weatherData.cityName, // Display city from data
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     color: Colors.white70,
@@ -214,6 +211,10 @@ class _ForecastPageState extends State<ForecastPage> with AutomaticKeepAliveClie
     );
   }
 }
+
+// ... (The _DailyForecastCard and _buildHourlyForecast widgets remain exactly the same) ...
+// (Make sure to paste the rest of the file from your original, I am omitting
+//  the unchanged _DailyForecastCard class here for brevity)
 
 class _DailyForecastCard extends StatelessWidget {
   final ForecastDay day;

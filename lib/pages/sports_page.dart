@@ -1,6 +1,8 @@
 // lib/pages/sports_page.dart
+import 'package:clear_view/state/app_state.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 // Use relative paths
 import '../services/weather_service.dart';
@@ -16,7 +18,7 @@ class SportsPage extends StatefulWidget {
 class _SportsPageState extends State<SportsPage>
     with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
   final WeatherService _weatherService = WeatherService();
-  Future<List<SportsEvent>>? _sportsFuture; // Now returns List<SportsEvent>
+  // We remove the future from here
 
   late TabController _tabController;
 
@@ -26,7 +28,7 @@ class _SportsPageState extends State<SportsPage>
   @override
   void initState() {
     super.initState();
-    _sportsFuture = _weatherService.getSports(); // Call the updated service method
+    // We don't fetch the future here anymore
     _tabController = TabController(length: 3, vsync: this);
   }
 
@@ -39,6 +41,10 @@ class _SportsPageState extends State<SportsPage>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for mixin
+
+    // Get the AppState.
+    final appState = Provider.of<AppState>(context);
+    final String currentCity = appState.searchedCityQuery;
 
     return Scaffold(
       body: NestedScrollView(
@@ -67,33 +73,40 @@ class _SportsPageState extends State<SportsPage>
             ),
           ];
         },
-        body: FutureBuilder<List<SportsEvent>>( // Future now expects List<SportsEvent>
-          future: _sportsFuture,
+        body: FutureBuilder<List<SportsEvent>>(
+          // Future now depends on the 'currentCity' from AppState
+          future: _weatherService.getSports(currentCity),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (currentCity == "Fetching location..." ||
+                snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
+            if (snapshot.hasError || currentCity == "Location Error") {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, color: Colors.red[300], size: 40),
+                      Icon(Icons.error_outline,
+                          color: Colors.red[300], size: 40),
                       SizedBox(height: 10),
                       Text(
-                        "Error: ${snapshot.error}",
+                        "Error: ${snapshot.error ?? 'Could not find location.'}",
                         style: TextStyle(color: Colors.red[300]),
                         textAlign: TextAlign.center,
                       ),
                       SizedBox(height: 20),
                       ElevatedButton(
                         onPressed: () {
-                          setState(() {
-                            _sportsFuture = _weatherService.getSports();
-                          });
+                          // We can't retry, so just ask user to search
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  "Please try searching for a city on the Home page."),
+                            ),
+                          );
                         },
                         child: Text("Retry"),
                         style: ElevatedButton.styleFrom(
@@ -107,7 +120,9 @@ class _SportsPageState extends State<SportsPage>
               );
             }
 
-            if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
+            if (!snapshot.hasData ||
+                snapshot.data == null ||
+                snapshot.data!.isEmpty) {
               return Center(child: Text("No sports data available."));
             }
 
@@ -115,10 +130,21 @@ class _SportsPageState extends State<SportsPage>
 
             // Filter events by sport type for each tab
             // You might need to adjust this filtering based on how your dummy data 'tournament' strings are structured
-            final List<SportsEvent> football = allEvents.where((e) => e.tournament.contains('League') || e.tournament.contains('Copa')).toList();
-            final List<SportsEvent> cricket = allEvents.where((e) => e.tournament.contains('Trophy') || e.tournament.contains('World Cup')).toList();
-            final List<SportsEvent> golf = allEvents.where((e) => e.tournament.contains('PGA Tour') || e.tournament.contains('Masters')).toList();
-
+            final List<SportsEvent> football = allEvents
+                .where((e) =>
+            e.tournament.contains('League') ||
+                e.tournament.contains('Copa'))
+                .toList();
+            final List<SportsEvent> cricket = allEvents
+                .where((e) =>
+            e.tournament.contains('Trophy') ||
+                e.tournament.contains('World Cup'))
+                .toList();
+            final List<SportsEvent> golf = allEvents
+                .where((e) =>
+            e.tournament.contains('PGA Tour') ||
+                e.tournament.contains('Masters'))
+                .toList();
 
             return TabBarView(
               controller: _tabController,
@@ -134,6 +160,11 @@ class _SportsPageState extends State<SportsPage>
     );
   }
 }
+
+// ... (The _SportsList, _SportsCard, and _DetailRow widgets
+//     remain exactly the same) ...
+// (Make sure to paste the rest of the file from your original, I am omitting
+//  the unchanged widget classes here for brevity)
 
 /// A reusable widget to display a list of sports events.
 class _SportsList extends StatelessWidget {

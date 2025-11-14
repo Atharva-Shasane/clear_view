@@ -1,6 +1,8 @@
 // lib/pages/marine_page.dart
+import 'package:clear_view/state/app_state.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../services/weather_service.dart';
 import '../models/marine_models.dart'; // Correct import for marine models
@@ -12,33 +14,15 @@ class MarinePage extends StatefulWidget {
   _MarinePageState createState() => _MarinePageState();
 }
 
-class _MarinePageState extends State<MarinePage> with AutomaticKeepAliveClientMixin {
+class _MarinePageState extends State<MarinePage>
+    with AutomaticKeepAliveClientMixin {
   final WeatherService _weatherService = WeatherService();
-  Future<MarineForecast>? _marineForecastFuture; // Use MarineForecast
-  String? _currentCity;
+  // We remove the future and city from here
 
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchMarineData();
-  }
-
-  Future<void> _fetchMarineData() async {
-    try {
-      _currentCity = await _weatherService.getCurrentCity();
-      setState(() {
-        _marineForecastFuture = _weatherService.getMarineForecast(_currentCity!);
-      });
-    } catch (e) {
-      print("Error fetching current city for marine: $e");
-      setState(() {
-        _marineForecastFuture = Future.error("Could not get current location for marine: $e");
-      });
-    }
-  }
+  // We don't need initState or _fetchMarineData anymore
 
   // Helper to get image path based on weather condition
   String _getWeatherImageForCondition(String condition) {
@@ -48,6 +32,10 @@ class _MarinePageState extends State<MarinePage> with AutomaticKeepAliveClientMi
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    // Get the AppState.
+    final appState = Provider.of<AppState>(context);
+    final String currentCity = appState.searchedCityQuery;
 
     return Scaffold(
       appBar: AppBar(
@@ -60,29 +48,39 @@ class _MarinePageState extends State<MarinePage> with AutomaticKeepAliveClientMi
         elevation: 0,
       ),
       body: FutureBuilder<MarineForecast>(
-        future: _marineForecastFuture,
+        future: _weatherService.getMarineForecast(currentCity),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (currentCity == "Fetching location..." ||
+              snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
 
-          if (snapshot.hasError) {
+          if (snapshot.hasError || currentCity == "Location Error") {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline, color: Colors.red[300], size: 40),
+                    Icon(Icons.error_outline,
+                        color: Colors.red[300], size: 40),
                     SizedBox(height: 10),
                     Text(
-                      "Error: ${snapshot.error}",
+                      "Error: ${snapshot.error ?? 'Could not find location.'}",
                       style: TextStyle(color: Colors.red[300]),
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 20),
                     ElevatedButton(
-                      onPressed: _fetchMarineData,
+                      onPressed: () {
+                        // We can't retry, so just ask user to search
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                "Please try searching for a city on the Home page."),
+                          ),
+                        );
+                      },
                       child: Text("Retry"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.lightBlueAccent[100],
@@ -96,31 +94,32 @@ class _MarinePageState extends State<MarinePage> with AutomaticKeepAliveClientMi
           }
 
           if (!snapshot.hasData || snapshot.data == null) {
-            return Center(child: Text("No marine forecast data available."));
+            return Center(
+                child: Text("No marine forecast data available."));
           }
 
           final MarineForecast marineData = snapshot.data!;
 
           return Column(
             children: [
-              if (_currentCity != null)
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    marineData.locationName, // Use locationName from MarineForecast
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.bold,
-                    ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  marineData.locationName, // Use locationName from MarineForecast
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+              ),
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16.0),
                   itemCount: marineData.forecastDays.length,
                   itemBuilder: (context, index) {
-                    final MarineDayForecast day = marineData.forecastDays[index];
+                    final MarineDayForecast day =
+                    marineData.forecastDays[index];
                     return _MarineDayForecastCard(
                       day: day,
                       getWeatherImage: _getWeatherImageForCondition,
@@ -135,6 +134,11 @@ class _MarinePageState extends State<MarinePage> with AutomaticKeepAliveClientMi
     );
   }
 }
+
+// ... (The _MarineDayForecastCard, _DetailRow, and _TideRow widgets
+//     remain exactly the same) ...
+// (Make sure to paste the rest of the file from your original, I am omitting
+//  the unchanged widget classes here for brevity)
 
 class _MarineDayForecastCard extends StatelessWidget {
   final MarineDayForecast day;

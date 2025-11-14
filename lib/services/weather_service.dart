@@ -12,7 +12,7 @@ import '../models/sports_models.dart'; // NEW: Added import for Sports models
 class WeatherService {
   // Renamed to lowerCamelCase for linting consistency
   static const String baseUrl = "http://api.weatherapi.com/v1";
-  static const String apiKey = "b33606d6e6b049ee9be152834251311"; // Replace with your actual API key
+  static const String apiKey = "5636def6f6ad4112a4091527251311"; // Replace with your actual API key
 
   // --- Weather and Forecast ---
   Future<Weather> getWeather(String cityName) async {
@@ -172,7 +172,7 @@ class WeatherService {
 
 
   // --- Sports Data ---
-  Future<List<SportsEvent>> getSports() async { // Changed return type to List<SportsEvent>
+  Future<List<SportsEvent>> getSports(String location) async{ // Changed return type to List<SportsEvent>
     // Dummy data for sports as WeatherAPI free tier doesn't include it.
     await Future.delayed(Duration(seconds: 1)); // Simulate network delay
 
